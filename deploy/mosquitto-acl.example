@@ -1,0 +1,14 @@
+# Example Mosquitto ACL file entry for the SMTP-to-MQTT gateway.
+#
+# Referenced from mosquitto.conf via:
+#   acl_file /etc/mosquitto/acl
+#
+# Combine with a per-user password file entry, e.g.:
+#   mosquitto_passwd -b /etc/mosquitto/passwd smtp-gateway <password>
+#
+# The gateway only ever needs to publish - never subscribe - to its two
+# topics, so grant "write" (publish) only, nothing else.
+
+user smtp-gateway
+topic write homelab/alerts/raw
+topic write homelab/gateways/smtp/status

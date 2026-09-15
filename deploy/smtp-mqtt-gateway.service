@@ -1,0 +1,40 @@
+[Unit]
+Description=Generic SMTP to MQTT gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=smtp-mqtt-gateway
+Group=smtp-mqtt-gateway
+WorkingDirectory=/opt/smtp-mqtt-gateway
+
+# Framework-dependent publish (see deploy/README.md):
+ExecStart=/usr/bin/dotnet /opt/smtp-mqtt-gateway/SmtpMqttGateway.dll
+# Self-contained single-file publish instead:
+# ExecStart=/opt/smtp-mqtt-gateway/SmtpMqttGateway
+
+Environment=DOTNET_ENVIRONMENT=Production
+# Prefer environment variables over appsettings.Production.json for secrets,
+# e.g. via an EnvironmentFile:
+# EnvironmentFile=/opt/smtp-mqtt-gateway/gateway.env  (containing Mqtt__Password=...)
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Hardening: the gateway only needs a loopback socket and outbound TCP to
+# the MQTT broker, so it can run with almost nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/opt/smtp-mqtt-gateway
+
+[Install]
+WantedBy=multi-user.target

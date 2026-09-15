@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmtpMqttGateway/SmtpMqttGateway.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmtpMqttGateway.Tests/SmtpMqttGateway.Tests.csproj" />
+  </Folder>
+</Solution>
