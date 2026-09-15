@@ -6,9 +6,25 @@
 # Combine with a per-user password file entry, e.g.:
 #   mosquitto_passwd -b /etc/mosquitto/passwd smtp-gateway <password>
 #
-# The gateway only ever needs to publish - never subscribe - to its two
-# topics, so grant "write" (publish) only, nothing else.
+# The gateway only ever needs to publish - never subscribe.
+#
+# It publishes to three kinds of topics:
+#   - Mqtt:RawTopic       (fixed, e.g. homelab/alerts/raw)
+#   - Mqtt:TopicTemplate  (per-sender, e.g. homelab/alerts/root, homelab/alerts/pve, ...
+#                          resolved at runtime from the envelope sender - see
+#                          Mqtt:TopicTemplate in appsettings for the variables
+#                          available)
+#   - Mqtt:StatusTopic    (fixed, e.g. homelab/gateways/smtp/status)
+#
+# Because TopicTemplate expands to a different exact topic per sender, grant
+# a wildcard covering its static prefix rather than an exact-match rule.
+# With the default RawTopic/TopicTemplate below, both already share the
+# "homelab/alerts/" prefix, so one wildcard rule covers both:
 
 user smtp-gateway
-topic write homelab/alerts/raw
+topic write homelab/alerts/#
 topic write homelab/gateways/smtp/status
+
+# If you point TopicTemplate at a different prefix than RawTopic (e.g.
+# RawTopic=homelab/alerts/raw but TopicTemplate=homelab/senders/{senderLocal}),
+# add a second "topic write" wildcard line covering that prefix too.

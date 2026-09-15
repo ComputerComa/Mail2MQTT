@@ -88,12 +88,49 @@ self-contained single-file binary).
 ## 7. Mosquitto ACL
 
 See `deploy/mosquitto-acl.example`. The gateway needs **publish-only**
-access to its two topics:
+access to:
 
-- `homelab/alerts/raw`
-- `homelab/gateways/smtp/status`
+- `Mqtt:RawTopic` - a fixed fan-out topic every alert is published to
+  (default `homelab/alerts/raw`)
+- `Mqtt:TopicTemplate` - a per-sender topic resolved per message (see
+  "Per-sender routing" below), so grant a wildcard covering its prefix
+  rather than an exact match
+- `Mqtt:StatusTopic` - retained online/offline gateway status (default
+  `homelab/gateways/smtp/status`)
 
 It never subscribes to anything, so do not grant it read access.
+
+### Per-sender routing (`Mqtt:TopicTemplate`)
+
+Every alert is published twice: once to the fixed `RawTopic` fan-out, and
+once to a topic built from `TopicTemplate` - a string where `{variable}`
+placeholders are substituted per message, so you can route different
+senders to different downstream flows without any classification logic
+in the gateway itself. Available variables (derived from the SMTP
+envelope, sanitized and lowercased for MQTT topic safety):
+
+| Variable            | Meaning                                        |
+|---------------------|-------------------------------------------------|
+| `{sender}`          | full envelope sender address                    |
+| `{senderLocal}`     | envelope sender, local part only (before `@`)   |
+| `{senderDomain}`    | envelope sender, domain only (after `@`)        |
+| `{recipient}`       | full first envelope recipient address           |
+| `{recipientLocal}`  | first envelope recipient, local part only       |
+| `{recipientDomain}` | first envelope recipient, domain only           |
+
+For example, with envelope sender `root@truenas.local`:
+
+```text
+TopicTemplate = "homelab/alerts/{senderLocal}"           -> homelab/alerts/root
+TopicTemplate = "homelab/alerts/{senderDomain}/{senderLocal}" -> homelab/alerts/truenas.local/root
+TopicTemplate = "homelab/senders/{senderLocal}/pve"       -> homelab/senders/root/pve
+```
+
+The template is validated at startup: unknown `{variable}` names, or a
+literal `+`/`#` outside of a placeholder, fail startup immediately. Both
+publishes (raw and per-sender) must be acknowledged by the broker for the
+SMTP transaction to succeed - if either fails, the gateway returns a
+temporary SMTP failure so the upstream MTA retries the whole message.
 
 ## 8. Postfix integration
 

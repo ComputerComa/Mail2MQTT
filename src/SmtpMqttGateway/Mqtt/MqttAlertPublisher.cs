@@ -35,8 +35,8 @@ public sealed class MqttAlertPublisher : IAlertPublisher, IHostedService, IAsync
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation(
-            "MQTT publisher starting: broker {Host}:{Port} (tls={UseTls}) clientId={ClientId} topic={Topic} statusTopic={StatusTopic}",
-            _options.Host, _options.Port, _options.UseTls, _options.ClientId, _options.Topic, _options.StatusTopic);
+            "MQTT publisher starting: broker {Host}:{Port} (tls={UseTls}) clientId={ClientId} rawTopic={RawTopic} topicTemplate={TopicTemplate} statusTopic={StatusTopic}",
+            _options.Host, _options.Port, _options.UseTls, _options.ClientId, _options.RawTopic, _options.TopicTemplate, _options.StatusTopic);
 
         _stoppingCts = new CancellationTokenSource();
         _connectionLoopTask = RunConnectionLoopAsync(_stoppingCts.Token);
@@ -76,6 +76,13 @@ public sealed class MqttAlertPublisher : IAlertPublisher, IHostedService, IAsync
         }
     }
 
+    /// <summary>
+    /// Publishes every alert twice: once to the fixed <see cref="MqttOptions.RawTopic"/>
+    /// fan-out topic, and once to a per-sender topic resolved from
+    /// <see cref="MqttOptions.TopicTemplate"/> (see <see cref="AlertTopicTemplate"/>),
+    /// so different senders can be routed to different downstream flows.
+    /// Both publishes must succeed for the overall result to be true.
+    /// </summary>
     public async Task<bool> PublishAlertAsync(AlertEnvelopeV1 alertEvent, CancellationToken cancellationToken)
     {
         if (!_client.IsConnected)
@@ -85,8 +92,22 @@ public sealed class MqttAlertPublisher : IAlertPublisher, IHostedService, IAsync
         }
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(alertEvent, JsonDefaults.AlertEventOptions);
+        var senderTopic = AlertTopicTemplate.Resolve(_options.TopicTemplate, alertEvent);
+
+        using var publishCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        publishCts.CancelAfter(TimeSpan.FromSeconds(_options.PublishTimeoutSeconds));
+
+        var results = await Task.WhenAll(
+            PublishPayloadAsync(_options.RawTopic, payload, alertEvent.EventId, publishCts.Token),
+            PublishPayloadAsync(senderTopic, payload, alertEvent.EventId, publishCts.Token)).ConfigureAwait(false);
+
+        return results.All(success => success);
+    }
+
+    private async Task<bool> PublishPayloadAsync(string topic, byte[] payload, string eventId, CancellationToken cancellationToken)
+    {
         var message = new MqttApplicationMessageBuilder()
-            .WithTopic(_options.Topic)
+            .WithTopic(topic)
             .WithPayload(payload)
             .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .WithRetainFlag(false)
@@ -94,27 +115,24 @@ public sealed class MqttAlertPublisher : IAlertPublisher, IHostedService, IAsync
 
         try
         {
-            using var publishCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            publishCts.CancelAfter(TimeSpan.FromSeconds(_options.PublishTimeoutSeconds));
-
-            var result = await _client.PublishAsync(message, publishCts.Token).ConfigureAwait(false);
+            var result = await _client.PublishAsync(message, cancellationToken).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
                 _logger.LogWarning(
-                    "MQTT publish rejected for {EventId}: {ReasonCode} {ReasonString}",
-                    alertEvent.EventId, result.ReasonCode, result.ReasonString);
+                    "MQTT publish to {Topic} rejected for {EventId}: {ReasonCode} {ReasonString}",
+                    topic, eventId, result.ReasonCode, result.ReasonString);
             }
 
             return result.IsSuccess;
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("MQTT publish timed out for {EventId} after {Timeout}s", alertEvent.EventId, _options.PublishTimeoutSeconds);
+            _logger.LogWarning("MQTT publish to {Topic} timed out for {EventId} after {Timeout}s", topic, eventId, _options.PublishTimeoutSeconds);
             return false;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "MQTT publish failed for {EventId}", alertEvent.EventId);
+            _logger.LogWarning(ex, "MQTT publish to {Topic} failed for {EventId}", topic, eventId);
             return false;
         }
     }

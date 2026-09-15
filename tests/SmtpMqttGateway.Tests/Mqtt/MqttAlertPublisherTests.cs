@@ -67,7 +67,8 @@ public sealed class MqttAlertPublisherTests : IAsyncLifetime
         ClientId = "gateway-under-test",
         Username = "smtp-gateway",
         Password = password,
-        Topic = "homelab/alerts/raw",
+        RawTopic = "homelab/alerts/raw",
+        TopicTemplate = "homelab/alerts/{senderLocal}",
         StatusTopic = "homelab/gateways/smtp/status",
         ConnectTimeoutSeconds = 5,
         PublishTimeoutSeconds = 5,
@@ -110,16 +111,18 @@ public sealed class MqttAlertPublisherTests : IAsyncLifetime
     public async Task SuccessfulPublish_IsAcknowledgedAndDeliveredNonRetained()
     {
         var received = new List<MqttApplicationMessageReceivedEventArgs>();
-        using var subscriber = await ConnectSubscriberAsync("homelab/alerts/raw", received);
+        using var subscriber = await ConnectSubscriberAsync("homelab/alerts/#", received);
 
         await using var publisher = new MqttAlertPublisher(Options.Create(BuildOptions()), NullLogger());
         await publisher.StartAsync(CancellationToken.None);
-        await WaitUntilAsync(() => received.Count == 0, TimeSpan.FromSeconds(1)); // just let it connect
 
         var result = await WaitForResultAsync(publisher);
         Assert.True(result);
 
-        await WaitUntilAsync(() => received.Any(r => r.ApplicationMessage.Topic == "homelab/alerts/raw"), TimeSpan.FromSeconds(5));
+        // SampleEvent()'s envelope sender is root@example.com, and the default
+        // TopicTemplate is "homelab/alerts/{senderLocal}", so both the raw
+        // fan-out topic and the per-sender topic should receive a copy.
+        await WaitUntilAsync(() => received.Any(r => r.ApplicationMessage.Topic == "homelab/alerts/root"), TimeSpan.FromSeconds(5));
 
         var alertMessage = received.Single(r => r.ApplicationMessage.Topic == "homelab/alerts/raw");
         Assert.False(alertMessage.ApplicationMessage.Retain);
@@ -128,6 +131,30 @@ public sealed class MqttAlertPublisherTests : IAsyncLifetime
         var json = Encoding.UTF8.GetString(alertMessage.ApplicationMessage.Payload.ToArray());
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("abc123", doc.RootElement.GetProperty("eventId").GetString());
+
+        var senderTopicMessage = received.Single(r => r.ApplicationMessage.Topic == "homelab/alerts/root");
+        Assert.False(senderTopicMessage.ApplicationMessage.Retain);
+
+        await publisher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PerSenderTopic_ResolvesFromConfiguredTemplate()
+    {
+        var received = new List<MqttApplicationMessageReceivedEventArgs>();
+        using var subscriber = await ConnectSubscriberAsync("homelab/senders/#", received);
+
+        var options = BuildOptions();
+        options.TopicTemplate = "homelab/senders/{senderDomain}/{senderLocal}";
+
+        await using var publisher = new MqttAlertPublisher(Options.Create(options), NullLogger());
+        await publisher.StartAsync(CancellationToken.None);
+
+        var result = await WaitForResultAsync(publisher);
+        Assert.True(result);
+
+        // SampleEvent()'s envelope sender is root@example.com.
+        await WaitUntilAsync(() => received.Any(r => r.ApplicationMessage.Topic == "homelab/senders/example.com/root"), TimeSpan.FromSeconds(5));
 
         await publisher.StopAsync(CancellationToken.None);
     }

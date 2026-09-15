@@ -60,7 +60,24 @@ Copy `src/SmtpMqttGateway/appsettings.example.json` to
 `Mqtt__Password`) to point the gateway at your own MQTT broker before
 running it for real.
 
-## Event schema (`homelab/alerts/raw` payload)
+## Topics
+
+Every alert is published twice, both at QoS 1 and not retained:
+
+- A fixed fan-out topic (`Mqtt:RawTopic`, default `homelab/alerts/raw`) -
+  every alert, regardless of sender.
+- A per-sender topic resolved from `Mqtt:TopicTemplate` (default
+  `homelab/alerts/{senderLocal}`), so different senders can be routed to
+  different downstream flows without any classification logic in the
+  gateway itself. See `deploy/README.md` for the available template
+  variables. Both publishes must be acknowledged for the SMTP transaction
+  to succeed.
+
+The retained gateway status (`Mqtt:StatusTopic`, default
+`homelab/gateways/smtp/status`) is `online`/`offline`, backed by an MQTT
+Last Will for ungraceful disconnects.
+
+## Event schema (alert payload)
 
 ```json
 {

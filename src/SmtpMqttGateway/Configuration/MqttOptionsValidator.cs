@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using SmtpMqttGateway.Mqtt;
 
 namespace SmtpMqttGateway.Configuration;
 
@@ -23,9 +24,14 @@ public sealed class MqttOptionsValidator : IValidateOptions<MqttOptions>
             failures.Add("Mqtt:ClientId must not be empty.");
         }
 
-        if (string.IsNullOrWhiteSpace(options.Topic))
+        if (string.IsNullOrWhiteSpace(options.RawTopic))
         {
-            failures.Add("Mqtt:Topic must not be empty.");
+            failures.Add("Mqtt:RawTopic must not be empty.");
+        }
+
+        foreach (var error in AlertTopicTemplate.Validate(options.TopicTemplate))
+        {
+            failures.Add($"Mqtt:TopicTemplate {error}.");
         }
 
         if (string.IsNullOrWhiteSpace(options.StatusTopic))
