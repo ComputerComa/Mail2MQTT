@@ -9,9 +9,16 @@ public sealed class SmtpOptionsValidator : IValidateOptions<SmtpOptions>
     {
         var failures = new List<string>();
 
-        if (!IPAddress.TryParse(options.ListenAddress, out _))
+        if (!IPAddress.TryParse(options.ListenAddress, out var listenAddress))
         {
             failures.Add($"Smtp:ListenAddress '{options.ListenAddress}' is not a valid IP address.");
+        }
+        else if (!IPAddress.IsLoopback(listenAddress))
+        {
+            failures.Add(
+                $"Smtp:ListenAddress '{options.ListenAddress}' is not a loopback address. This listener has no " +
+                "authentication or TLS of its own - it must only be reachable from the trusted SMTP frontend on " +
+                "the same host, so it may only bind to a loopback address (e.g. 127.0.0.1 or ::1).");
         }
 
         if (options.Port is <= 0 or > 65535)
