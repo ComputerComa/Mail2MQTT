@@ -67,7 +67,6 @@ public sealed class MqttAlertPublisherTests : IAsyncLifetime
         ClientId = "gateway-under-test",
         Username = "smtp-gateway",
         Password = password,
-        RawTopic = "homelab/alerts/raw",
         TopicTemplate = "homelab/alerts/{senderLocal}",
         StatusTopic = "homelab/gateways/smtp/status",
         ConnectTimeoutSeconds = 5,
@@ -120,20 +119,16 @@ public sealed class MqttAlertPublisherTests : IAsyncLifetime
         Assert.True(result);
 
         // SampleEvent()'s envelope sender is root@example.com, and the default
-        // TopicTemplate is "homelab/alerts/{senderLocal}", so both the raw
-        // fan-out topic and the per-sender topic should receive a copy.
+        // TopicTemplate is "homelab/alerts/{senderLocal}".
         await WaitUntilAsync(() => received.Any(r => r.ApplicationMessage.Topic == "homelab/alerts/root"), TimeSpan.FromSeconds(5));
 
-        var alertMessage = received.Single(r => r.ApplicationMessage.Topic == "homelab/alerts/raw");
+        var alertMessage = received.Single(r => r.ApplicationMessage.Topic == "homelab/alerts/root");
         Assert.False(alertMessage.ApplicationMessage.Retain);
         Assert.Equal(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce, alertMessage.ApplicationMessage.QualityOfServiceLevel);
 
         var json = Encoding.UTF8.GetString(alertMessage.ApplicationMessage.Payload.ToArray());
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("abc123", doc.RootElement.GetProperty("eventId").GetString());
-
-        var senderTopicMessage = received.Single(r => r.ApplicationMessage.Topic == "homelab/alerts/root");
-        Assert.False(senderTopicMessage.ApplicationMessage.Retain);
 
         await publisher.StopAsync(CancellationToken.None);
     }

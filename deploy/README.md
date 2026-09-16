@@ -90,8 +90,6 @@ self-contained single-file binary).
 See `deploy/mosquitto-acl.example`. The gateway needs **publish-only**
 access to:
 
-- `Mqtt:RawTopic` - a fixed fan-out topic every alert is published to
-  (default `homelab/alerts/raw`)
 - `Mqtt:TopicTemplate` - a per-sender topic resolved per message (see
   "Per-sender routing" below), so grant a wildcard covering its prefix
   rather than an exact match
@@ -102,12 +100,11 @@ It never subscribes to anything, so do not grant it read access.
 
 ### Per-sender routing (`Mqtt:TopicTemplate`)
 
-Every alert is published twice: once to the fixed `RawTopic` fan-out, and
-once to a topic built from `TopicTemplate` - a string where `{variable}`
-placeholders are substituted per message, so you can route different
-senders to different downstream flows without any classification logic
-in the gateway itself. Available variables (derived from the SMTP
-envelope, sanitized and lowercased for MQTT topic safety):
+Every alert is published once, to a topic built from `TopicTemplate` - a
+string where `{variable}` placeholders are substituted per message, so you
+can route different senders to different downstream flows without any
+classification logic in the gateway itself. Available variables (derived
+from the SMTP envelope, sanitized and lowercased for MQTT topic safety):
 
 | Variable            | Meaning                                        |
 |---------------------|-------------------------------------------------|
@@ -127,10 +124,10 @@ TopicTemplate = "homelab/senders/{senderLocal}/pve"       -> homelab/senders/roo
 ```
 
 The template is validated at startup: unknown `{variable}` names, or a
-literal `+`/`#` outside of a placeholder, fail startup immediately. Both
-publishes (raw and per-sender) must be acknowledged by the broker for the
-SMTP transaction to succeed - if either fails, the gateway returns a
-temporary SMTP failure so the upstream MTA retries the whole message.
+literal `+`/`#` outside of a placeholder, fail startup immediately. The
+publish must be acknowledged by the broker for the SMTP transaction to
+succeed - if it fails, the gateway returns a temporary SMTP failure so the
+upstream MTA retries the whole message.
 
 ## 8. Postfix integration
 

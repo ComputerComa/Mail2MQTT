@@ -8,8 +8,7 @@
 #
 # The gateway only ever needs to publish - never subscribe.
 #
-# It publishes to three kinds of topics:
-#   - Mqtt:RawTopic       (fixed, e.g. homelab/alerts/raw)
+# It publishes to two kinds of topics:
 #   - Mqtt:TopicTemplate  (per-sender, e.g. homelab/alerts/root, homelab/alerts/pve, ...
 #                          resolved at runtime from the envelope sender - see
 #                          Mqtt:TopicTemplate in appsettings for the variables
@@ -17,14 +16,11 @@
 #   - Mqtt:StatusTopic    (fixed, e.g. homelab/gateways/smtp/status)
 #
 # Because TopicTemplate expands to a different exact topic per sender, grant
-# a wildcard covering its static prefix rather than an exact-match rule.
-# With the default RawTopic/TopicTemplate below, both already share the
-# "homelab/alerts/" prefix, so one wildcard rule covers both:
+# a wildcard covering its static prefix rather than an exact-match rule:
 
 user smtp-gateway
 topic write homelab/alerts/#
 topic write homelab/gateways/smtp/status
 
-# If you point TopicTemplate at a different prefix than RawTopic (e.g.
-# RawTopic=homelab/alerts/raw but TopicTemplate=homelab/senders/{senderLocal}),
-# add a second "topic write" wildcard line covering that prefix too.
+# Adjust the wildcard's prefix to match whatever static prefix you configure
+# in your own Mqtt:TopicTemplate.

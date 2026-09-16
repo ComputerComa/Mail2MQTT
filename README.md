@@ -16,7 +16,7 @@ Sending applications/appliances
     -> Existing SMTP frontend (auth, TLS, queuing, retries)
     -> Mail2MQTT (loopback SMTP -> MQTT, QoS 1, ack-gated)
     -> MQTT broker
-    -> whatever consumes homelab/alerts/raw
+    -> whatever consumes homelab/alerts/{sender}
 ```
 
 ## Why SMTP succeeds only after MQTT acknowledges
@@ -62,16 +62,12 @@ running it for real.
 
 ## Topics
 
-Every alert is published twice, both at QoS 1 and not retained:
-
-- A fixed fan-out topic (`Mqtt:RawTopic`, default `homelab/alerts/raw`) -
-  every alert, regardless of sender.
-- A per-sender topic resolved from `Mqtt:TopicTemplate` (default
-  `homelab/alerts/{senderLocal}`), so different senders can be routed to
-  different downstream flows without any classification logic in the
-  gateway itself. See `deploy/README.md` for the available template
-  variables. Both publishes must be acknowledged for the SMTP transaction
-  to succeed.
+Every alert is published once, at QoS 1 and not retained, to a per-sender
+topic resolved from `Mqtt:TopicTemplate` (default
+`homelab/alerts/{senderLocal}`), so different senders can be routed to
+different downstream flows without any classification logic in the gateway
+itself. See `deploy/README.md` for the available template variables. The
+publish must be acknowledged for the SMTP transaction to succeed.
 
 The retained gateway status (`Mqtt:StatusTopic`, default
 `homelab/gateways/smtp/status`) is `online`/`offline`, backed by an MQTT
